@@ -2,6 +2,7 @@ import os
 import uuid
 import tempfile
 import shutil
+import urllib.parse
 import yt_dlp
 import requests
 from flask import Flask, request, Response, jsonify, url_for
@@ -14,36 +15,112 @@ STREAM_TOKENS = {}
 
 # --- TÌM KIẾM VIDEO ---
 def search_youtube_and_get_url(query):
+    # Decode URL encoding nếu có
+    if query:
+        query = urllib.parse.unquote_plus(query)
+    
+    # Cấu hình để tránh bot detection
     ydl_opts = {
         'default_search': 'ytsearch1',
-        'quiet': True,
+        'quiet': False,
         'format': 'bestaudio',
-        'skip_download': True
+        'skip_download': True,
+        'extract_flat': False,
+        # Thêm headers để tránh bot detection
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-us,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+        },
+        # Retry với delay
+        'retries': 3,
+        'fragment_retries': 3,
+        'ignoreerrors': False,
+        # Thêm options để tránh rate limit
+        'sleep_interval': 1,
+        'max_sleep_interval': 5,
+        # Extractor args
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web'],  # Thử android client trước
+                'player_skip': ['webpage', 'configs'],
+            }
+        },
     }
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(query, download=False)
-            if info and 'entries' in info and len(info['entries']) > 0:
-                return info['entries'][0].get('webpage_url')
-            return None
-    except Exception as e:
-        print(f"LỖI TÌM KIẾM YOUTUBE: {e}")
-        return None
+    
+    import time
+    max_retries = 3
+    retry_delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            print(f"🔍 Đang tìm kiếm (lần {attempt + 1}/{max_retries}): '{query}'")
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(query, download=False)
+                print(f"📊 Kết quả tìm kiếm: {info}")
+                
+                if info and 'entries' in info:
+                    entries = [e for e in info['entries'] if e]  # Loại bỏ None entries
+                    if len(entries) > 0:
+                        video_url = entries[0].get('webpage_url') or entries[0].get('url')
+                        print(f"✅ Tìm thấy video: {video_url}")
+                        return video_url
+                    else:
+                        print("⚠️ Không có entries hợp lệ")
+                else:
+                    print("⚠️ Không có entries trong kết quả")
+                return None
+        except Exception as e:
+            error_msg = str(e)
+            print(f"❌ LỖI TÌM KIẾM YOUTUBE (lần {attempt + 1}): {error_msg}")
+            
+            # Nếu là lỗi bot detection, thử lại với delay
+            if "bot" in error_msg.lower() or "precondition" in error_msg.lower() or "400" in error_msg:
+                if attempt < max_retries - 1:
+                    wait_time = retry_delay * (attempt + 1)
+                    print(f"⏳ Đợi {wait_time} giây trước khi thử lại...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    print("❌ Đã thử tất cả các lần, YouTube có thể đang block")
+                    return None
+            else:
+                # Lỗi khác, không retry
+                import traceback
+                print(traceback.format_exc())
+                return None
+    
+    return None
 
 
 def fetch_basic_info(youtube_url):
     info_opts = {
         'format': 'bestaudio/best',
         'noplaylist': True,
-        'quiet': True,
+        'quiet': False,
         'skip_download': True,
+        # Thêm headers để tránh bot detection
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-us,en;q=0.5',
+        },
+        'retries': 3,
+        'fragment_retries': 3,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web'],
+            }
+        },
     }
 
     try:
         with yt_dlp.YoutubeDL(info_opts) as ydl:
             return ydl.extract_info(youtube_url, download=False)
     except Exception as e:
-        print("LỖI LẤY THÔNG TIN:", e)
+        print(f"LỖI LẤY THÔNG TIN: {e}")
         return None
 
 
@@ -54,7 +131,7 @@ def download_mp3_to_temp(youtube_url):
     download_opts = {
         'format': 'bestaudio/best',
         'noplaylist': True,
-        'quiet': True,
+        'quiet': False,
         'outtmpl': outtmpl,
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
@@ -68,6 +145,18 @@ def download_mp3_to_temp(youtube_url):
         ],
         'keepvideo': False,
         'overwrites': True,
+        # Thêm headers để tránh bot detection
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+        'retries': 3,
+        'fragment_retries': 3,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web'],
+            }
+        },
     }
     
     # Chỉ set ffmpeg_location nếu có biến môi trường (cho Windows local)
@@ -103,11 +192,16 @@ def get_audio_url():
     query = request.args.get('q')
 
     if query:
-        print("Nhận yêu cầu tìm kiếm:", query)
+        # Decode URL encoding
+        query = urllib.parse.unquote_plus(query)
+        print(f"📥 Nhận yêu cầu tìm kiếm: '{query}'")
         youtube_url = search_youtube_and_get_url(query)
         if not youtube_url:
-            return jsonify({"error": f"Không tìm thấy video cho từ khóa: {query}"}), 404
-        print("URL tìm được:", youtube_url)
+            return jsonify({
+                "error": f"Không tìm thấy video cho từ khóa: {query}",
+                "suggestion": "Thử với từ khóa khác hoặc dùng URL YouTube trực tiếp"
+            }), 404
+        print(f"✅ URL tìm được: {youtube_url}")
 
     if not youtube_url:
         return jsonify({"error": "Thiếu tham số 'url' hoặc 'q'"}), 400
@@ -142,11 +236,13 @@ def stream_audio():
     query = request.args.get('q')
 
     if query:
-        print("Nhận yêu cầu tìm kiếm:", query)
+        # Decode URL encoding
+        query = urllib.parse.unquote_plus(query)
+        print(f"📥 Nhận yêu cầu tìm kiếm: '{query}'")
         youtube_url = search_youtube_and_get_url(query)
         if not youtube_url:
-            return {"error": "Không tìm thấy video"}, 404
-        print("URL tìm được:", youtube_url)
+            return {"error": f"Không tìm thấy video cho: {query}"}, 404
+        print(f"✅ URL tìm được: {youtube_url}")
 
     if not youtube_url:
         return {"error": "Thiếu url hoặc q"}, 400
