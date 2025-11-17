@@ -68,8 +68,12 @@ def download_mp3_to_temp(youtube_url):
         ],
         'keepvideo': False,
         'overwrites': True,
-        'ffmpeg_location': r'C:\ProgramData\chocolatey\bin',
     }
+    
+    # Chỉ set ffmpeg_location nếu có biến môi trường (cho Windows local)
+    ffmpeg_path = os.environ.get('FFMPEG_PATH')
+    if ffmpeg_path:
+        download_opts['ffmpeg_location'] = ffmpeg_path
 
     try:
         with yt_dlp.YoutubeDL(download_opts) as ydl:
@@ -197,8 +201,8 @@ def stream_mp3_token(token):
 
 # --- CHẠY SERVER ---
 if __name__ == "__main__":
-    HOST = "0.0.0.0"
-    PORT = 5000
+    HOST = os.environ.get('HOST', '0.0.0.0')
+    PORT = int(os.environ.get('PORT', 5000))
 
     print("==============================================")
     print(" SERVER ĐÃ KHỞI ĐỘNG ")
