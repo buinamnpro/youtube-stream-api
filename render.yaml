@@ -2,6 +2,7 @@ services:
   - type: web
     name: music-server
     env: docker
+    plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
     envVars:

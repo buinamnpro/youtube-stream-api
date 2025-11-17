@@ -17,12 +17,14 @@ Server này có thể được deploy lên nhiều nền tảng cloud khác nhau
 5. Lấy URL từ dashboard
 
 ### 2. **Render** ⭐ **KHUYẾN NGHỊ CHO ỨNG DỤNG NÀY**
-- ✅ **Free tier:** 750 giờ/tháng (đủ cho 24/7)
+- ✅ **HOÀN TOÀN MIỄN PHÍ** - Free tier không mất tiền
+- ✅ **Free tier:** 750 giờ/tháng (đủ cho 24/7 trong 1 tháng)
 - ✅ **Dễ sử dụng:** Web UI đơn giản, không cần CLI
 - ✅ **Auto-deploy từ GitHub:** Tự động deploy khi push code
 - ✅ **Hỗ trợ Docker:** Có thể dùng Dockerfile (FFmpeg tự động cài)
-- ⚠️ **Timeout:** 90 giây (có thể tăng lên 300s với paid tier)
+- ⚠️ **Timeout:** 90 giây (đủ cho hầu hết trường hợp)
 - ⚠️ **Sleep sau 15 phút không dùng:** Free tier sẽ sleep (có thể mất 30s để wake up)
+- 💰 **Paid tier:** $7/tháng (chỉ cần nếu muốn không sleep + timeout dài hơn)
 
 **Cách deploy:**
 1. Đăng ký tại [render.com](https://render.com)

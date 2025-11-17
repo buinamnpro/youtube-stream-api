@@ -17,14 +17,23 @@ git push origin main
 
 ## Bước 3: Tạo Web Service
 
-### Cách 1: Sử dụng render.yaml (Tự động - Khuyến nghị)
+### ⚠️ Lưu Ý Quan Trọng về Blueprint
+
+**Render Blueprint có thể cảnh báo về phí**, nhưng bạn vẫn có thể chọn **FREE TIER** khi deploy!
+
+### Cách 1: Sử dụng render.yaml (Tự động)
 
 1. Sau khi đăng nhập, click **"New +"** → **"Blueprint"**
 2. Kết nối GitHub repository của bạn
 3. Render sẽ tự động detect file `render.yaml` và cấu hình
-4. Click **"Apply"** để deploy
+4. **QUAN TRỌNG:** Khi preview, đảm bảo chọn **"Free" plan** cho service
+5. Click **"Apply"** để deploy
 
-### Cách 2: Tạo Manual (Nếu không dùng render.yaml)
+**Nếu Render cảnh báo về phí:**
+- Vẫn tiếp tục, nhưng khi tạo service, chọn **"Free"** plan
+- Hoặc dùng **Cách 2** (Manual) để chắc chắn chọn free tier
+
+### Cách 2: Tạo Manual (Khuyến nghị - Đảm bảo Free Tier) ✅
 
 1. Click **"New +"** → **"Web Service"**
 2. Kết nối GitHub repository của bạn
@@ -42,11 +51,14 @@ git push origin main
    - **Dockerfile Path:** `Dockerfile` (hoặc `music_server/Dockerfile` nếu trong subfolder)
    - **Docker Context:** `.` (hoặc `music_server` nếu trong subfolder)
 
+   **Plan Settings (QUAN TRỌNG!):**
+   - **Plan:** Chọn **"Free"** ✅ (KHÔNG chọn Starter hoặc các plan có phí)
+
    **Advanced Settings (Optional):**
    - **Auto-Deploy:** `Yes` (tự động deploy khi push code)
    - **Health Check Path:** `/get_audio_url?q=test` (để kiểm tra server)
 
-5. Click **"Create Web Service"**
+5. **Đảm bảo đã chọn "Free" plan** → Click **"Create Web Service"**
 
 ## Bước 4: Chờ Deploy
 
@@ -114,23 +126,28 @@ Hoặc chỉnh sửa trong Render dashboard → **Environment** → Add:
 
 ## ⚠️ Lưu Ý Quan Trọng
 
-### 1. Free Tier Sleep
+### 1. Free Tier - HOÀN TOÀN MIỄN PHÍ ✅
+- **Render có free tier và KHÔNG mất tiền!**
+- Free tier: 750 giờ/tháng (đủ 24/7)
+- **Bạn chỉ trả tiền nếu chủ động upgrade** ($7/tháng - tùy chọn)
+
+### 2. Free Tier Sleep
 - **Free tier sẽ sleep sau 15 phút không có request**
 - Lần request đầu tiên sau khi sleep sẽ mất **~30 giây** để wake up
 - **Giải pháp:** 
-  - Dùng paid tier ($7/tháng) để không sleep
-  - Hoặc dùng service như [UptimeRobot](https://uptimerobot.com) để ping định kỳ
+  - Dùng paid tier ($7/tháng) để không sleep (TÙY CHỌN)
+  - Hoặc dùng service như [UptimeRobot](https://uptimerobot.com) để ping định kỳ (MIỄN PHÍ)
 
-### 2. Timeout
+### 3. Timeout
 - Free tier có timeout **90 giây**
 - Với stream audio dài có thể cần tăng timeout
 - Đã cấu hình `--timeout 300` trong Dockerfile
 
-### 3. Build Time
+### 4. Build Time
 - Lần đầu build có thể mất **5-10 phút** (cài FFmpeg, Python packages)
 - Các lần sau nhanh hơn nhờ cache
 
-### 4. Logs
+### 5. Logs
 - Xem logs trong tab **"Logs"** trên Render dashboard
 - Logs giúp debug khi có lỗi
 
