@@ -57,9 +57,16 @@ def search_youtube_and_get_url(query):
     cookies_file = os.path.join(BASE_DIR, 'cookies.txt')
     cookies_from_env = os.environ.get('YOUTUBE_COOKIES')
     
+    # Thêm cookies vào ydl_opts nếu có
     if os.path.exists(cookies_file):
         ydl_opts['cookiefile'] = cookies_file
         print(f"🍪 Sử dụng cookies từ file cho tìm kiếm")
+        # Khi có cookies, dùng web client
+        ydl_opts['extractor_args'] = {
+            'youtube': {
+                'player_client': ['web'],
+            }
+        }
     elif cookies_from_env:
         # Tạo file cookies từ environment variable
         temp_cookies_file = os.path.join(BASE_DIR, 'cookies_env.txt')
@@ -68,6 +75,12 @@ def search_youtube_and_get_url(query):
                 f.write(cookies_from_env)
             ydl_opts['cookiefile'] = temp_cookies_file
             print(f"🍪 Sử dụng cookies từ env cho tìm kiếm")
+            # Khi có cookies, dùng web client
+            ydl_opts['extractor_args'] = {
+                'youtube': {
+                    'player_client': ['web'],
+                }
+            }
         except Exception as e:
             print(f"⚠️ Không thể tạo cookies từ env: {e}")
     
@@ -354,11 +367,19 @@ def download_mp3_to_temp(youtube_url):
     if cookies_path:
         download_opts['cookiefile'] = cookies_path
         print(f"✅ Đã set cookiefile: {cookies_path}")
-        # Thêm các options khác để bypass bot detection khi có cookies
+        # Khi có cookies, phải dùng web client (android không hỗ trợ cookies)
         download_opts['extractor_args'] = {
             'youtube': {
-                'player_client': ['android', 'web'],  # Thử cả android và web khi có cookies
+                'player_client': ['web'],  # Chỉ dùng web khi có cookies (android không hỗ trợ)
                 'player_skip': ['webpage'],
+            }
+        }
+        print(f"✅ Đã set player_client=web (cookies yêu cầu web client)")
+    else:
+        # Không có cookies, dùng android client (ít bị block hơn)
+        download_opts['extractor_args'] = {
+            'youtube': {
+                'player_client': ['android'],  # Không có cookies thì dùng android
             }
         }
     
