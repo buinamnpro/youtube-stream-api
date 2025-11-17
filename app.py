@@ -64,7 +64,7 @@ def search_youtube_and_get_url(query):
         # Tạo file cookies từ environment variable
         temp_cookies_file = os.path.join(BASE_DIR, 'cookies_env.txt')
         try:
-            with open(temp_cookies_file, 'w') as f:
+            with open(temp_cookies_file, 'w', encoding='utf-8') as f:
                 f.write(cookies_from_env)
             ydl_opts['cookiefile'] = temp_cookies_file
             print(f"🍪 Sử dụng cookies từ env cho tìm kiếm")
@@ -255,28 +255,73 @@ def download_mp3_to_temp(youtube_url):
                 'player_client': ['android'],  # Chỉ dùng android, ít bị block
             }
         },
+        # Thêm options để bypass bot detection
+        'sleep_interval': 1,
+        'max_sleep_interval': 3,
     }
     
     # Sử dụng cookies từ file hoặc environment variable
     cookies_file = os.path.join(BASE_DIR, 'cookies.txt')
     cookies_from_env = os.environ.get('YOUTUBE_COOKIES')
     
+    # Debug: Kiểm tra env variable
+    if cookies_from_env:
+        print(f"🍪 Tìm thấy YOUTUBE_COOKIES env variable (length: {len(cookies_from_env)} chars)")
+    else:
+        print(f"⚠️ Không tìm thấy YOUTUBE_COOKIES env variable")
+    
+    cookies_path = None
     if os.path.exists(cookies_file):
-        download_opts['cookiefile'] = cookies_file
+        cookies_path = cookies_file
         print(f"🍪 Sử dụng cookies từ file: {cookies_file}")
+        # Kiểm tra format cookies file
+        try:
+            with open(cookies_file, 'r', encoding='utf-8') as f:
+                first_line = f.readline().strip()
+                if not first_line.startswith('#') and 'Netscape' not in first_line:
+                    print(f"⚠️ Cảnh báo: cookies.txt có thể không đúng format Netscape")
+        except:
+            pass
     elif cookies_from_env:
         # Tạo file cookies từ environment variable
         temp_cookies_file = os.path.join(BASE_DIR, 'cookies_env.txt')
         try:
-            with open(temp_cookies_file, 'w') as f:
+            with open(temp_cookies_file, 'w', encoding='utf-8') as f:
                 f.write(cookies_from_env)
-            download_opts['cookiefile'] = temp_cookies_file
-            print(f"🍪 Sử dụng cookies từ environment variable")
+            cookies_path = temp_cookies_file
+            print(f"🍪 Đã tạo cookies từ env variable: {temp_cookies_file}")
+            # Kiểm tra file đã tạo
+            if os.path.exists(temp_cookies_file):
+                file_size = os.path.getsize(temp_cookies_file)
+                print(f"✅ File cookies đã tạo thành công ({file_size} bytes)")
+                # Kiểm tra format
+                with open(temp_cookies_file, 'r', encoding='utf-8') as f:
+                    content = f.read(100)  # Đọc 100 ký tự đầu
+                    if 'youtube.com' in content or 'Netscape' in content:
+                        print(f"✅ Format cookies có vẻ đúng")
+                    else:
+                        print(f"⚠️ Cảnh báo: Format cookies có thể không đúng")
+            else:
+                print(f"❌ File cookies không tồn tại sau khi tạo!")
         except Exception as e:
-            print(f"⚠️ Không thể tạo cookies từ env: {e}")
+            print(f"❌ LỖI tạo cookies từ env: {e}")
+            import traceback
+            print(traceback.format_exc())
     else:
         print(f"⚠️ Không tìm thấy cookies.txt, có thể bị block")
         print(f"   Tạo file cookies.txt hoặc set YOUTUBE_COOKIES env (xem COOKIES_GUIDE.md)")
+    
+    # Thêm cookies vào download_opts nếu có
+    if cookies_path:
+        download_opts['cookiefile'] = cookies_path
+        print(f"✅ Đã set cookiefile: {cookies_path}")
+        # Thêm các options khác để bypass bot detection khi có cookies
+        download_opts['extractor_args'] = {
+            'youtube': {
+                'player_client': ['android', 'web'],  # Thử cả android và web khi có cookies
+                'player_skip': ['webpage'],
+            }
+        }
     
     # Chỉ set ffmpeg_location nếu có biến môi trường (cho Windows local)
     ffmpeg_path = os.environ.get('FFMPEG_PATH')
