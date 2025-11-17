@@ -262,13 +262,52 @@ def download_mp3_to_temp(youtube_url):
     
     # Sử dụng cookies từ file hoặc environment variable
     cookies_file = os.path.join(BASE_DIR, 'cookies.txt')
+    
+    # Thử đọc từ environment variable (nhiều cách)
+    cookies_from_env = None
+    
+    # Cách 1: Từ os.environ (thông thường)
     cookies_from_env = os.environ.get('YOUTUBE_COOKIES')
+    
+    # Cách 2: Từ /etc/secrets/ (Render có thể lưu ở đây)
+    if not cookies_from_env:
+        secrets_file = '/etc/secrets/YOUTUBE_COOKIES'
+        if os.path.exists(secrets_file):
+            try:
+                with open(secrets_file, 'r', encoding='utf-8') as f:
+                    cookies_from_env = f.read().strip()
+                print(f"🍪 Đọc cookies từ /etc/secrets/YOUTUBE_COOKIES")
+            except Exception as e:
+                print(f"⚠️ Không thể đọc từ /etc/secrets/YOUTUBE_COOKIES: {e}")
+    
+    # Cách 3: Từ file trong app root (fallback)
+    if not cookies_from_env:
+        env_file = os.path.join(BASE_DIR, '.env')
+        if os.path.exists(env_file):
+            try:
+                with open(env_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        if line.startswith('YOUTUBE_COOKIES='):
+                            cookies_from_env = line.split('=', 1)[1].strip().strip('"').strip("'")
+                            print(f"🍪 Đọc cookies từ .env file")
+                            break
+            except Exception as e:
+                print(f"⚠️ Không thể đọc từ .env: {e}")
     
     # Debug: Kiểm tra env variable
     if cookies_from_env:
-        print(f"🍪 Tìm thấy YOUTUBE_COOKIES env variable (length: {len(cookies_from_env)} chars)")
+        print(f"🍪 Tìm thấy YOUTUBE_COOKIES (length: {len(cookies_from_env)} chars)")
+        # Kiểm tra nội dung có hợp lý không
+        if len(cookies_from_env) < 100:
+            print(f"⚠️ Cảnh báo: YOUTUBE_COOKIES quá ngắn ({len(cookies_from_env)} chars), có thể thiếu nội dung")
+        elif 'youtube.com' not in cookies_from_env and 'Netscape' not in cookies_from_env:
+            print(f"⚠️ Cảnh báo: YOUTUBE_COOKIES có thể không đúng format")
     else:
         print(f"⚠️ Không tìm thấy YOUTUBE_COOKIES env variable")
+        print(f"   Đã thử: os.environ, /etc/secrets/YOUTUBE_COOKIES, .env file")
+        print(f"   → Vào Render Dashboard → Settings → Environment")
+        print(f"   → Thêm biến: Key=YOUTUBE_COOKIES, Value=<nội dung cookies.txt>")
+        print(f"   → Save và Redeploy!")
     
     cookies_path = None
     if os.path.exists(cookies_file):
