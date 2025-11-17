@@ -19,13 +19,13 @@ def search_youtube_and_get_url(query):
     if query:
         query = urllib.parse.unquote_plus(query)
     
-    # Cấu hình để tránh bot detection
+    # Cấu hình để tránh bot detection - dùng extract_flat để chỉ lấy URL
     ydl_opts = {
         'default_search': 'ytsearch1',
         'quiet': False,
         'format': 'bestaudio',
         'skip_download': True,
-        'extract_flat': False,
+        'extract_flat': True,  # Chỉ lấy URL, không cần metadata (tránh bot detection)
         # Thêm headers để tránh bot detection
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -37,14 +37,14 @@ def search_youtube_and_get_url(query):
         # Retry với delay
         'retries': 3,
         'fragment_retries': 3,
-        'ignoreerrors': False,
+        'ignoreerrors': True,  # Bỏ qua lỗi để tiếp tục
         # Thêm options để tránh rate limit
         'sleep_interval': 1,
         'max_sleep_interval': 5,
-        # Extractor args
+        # Extractor args - chỉ dùng android client
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'web'],  # Thử android client trước
+                'player_client': ['android'],  # Chỉ dùng android, ít bị block hơn
                 'player_skip': ['webpage', 'configs'],
             }
         },
@@ -64,9 +64,19 @@ def search_youtube_and_get_url(query):
                 if info and 'entries' in info:
                     entries = [e for e in info['entries'] if e]  # Loại bỏ None entries
                     if len(entries) > 0:
-                        video_url = entries[0].get('webpage_url') or entries[0].get('url')
-                        print(f"✅ Tìm thấy video: {video_url}")
-                        return video_url
+                        entry = entries[0]
+                        # Với extract_flat=True, có thể chỉ có id, cần build URL
+                        video_id = entry.get('id')
+                        if video_id:
+                            video_url = f"https://www.youtube.com/watch?v={video_id}"
+                            print(f"✅ Tìm thấy video ID: {video_id}")
+                            print(f"✅ URL: {video_url}")
+                            return video_url
+                        # Hoặc có sẵn URL
+                        video_url = entry.get('webpage_url') or entry.get('url')
+                        if video_url:
+                            print(f"✅ Tìm thấy video: {video_url}")
+                            return video_url
                     else:
                         print("⚠️ Không có entries hợp lệ")
                 else:
@@ -96,31 +106,44 @@ def search_youtube_and_get_url(query):
 
 
 def fetch_basic_info(youtube_url):
+    # Thử lấy thông tin, nhưng nếu bị block thì dùng giá trị mặc định
     info_opts = {
         'format': 'bestaudio/best',
         'noplaylist': True,
         'quiet': False,
         'skip_download': True,
+        'ignoreerrors': True,  # Bỏ qua lỗi
         # Thêm headers để tránh bot detection
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'en-us,en;q=0.5',
         },
-        'retries': 3,
-        'fragment_retries': 3,
+        'retries': 2,  # Giảm retry để nhanh hơn
+        'fragment_retries': 2,
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'web'],
+                'player_client': ['android'],  # Chỉ dùng android
             }
         },
     }
 
     try:
         with yt_dlp.YoutubeDL(info_opts) as ydl:
-            return ydl.extract_info(youtube_url, download=False)
+            info = ydl.extract_info(youtube_url, download=False)
+            # Nếu bị block, info có thể None hoặc thiếu dữ liệu
+            if info:
+                return info
+            else:
+                print("⚠️ Không lấy được thông tin, dùng giá trị mặc định")
+                return None
     except Exception as e:
-        print(f"LỖI LẤY THÔNG TIN: {e}")
+        error_msg = str(e)
+        # Nếu là lỗi bot, không cần retry
+        if "bot" in error_msg.lower() or "login" in error_msg.lower():
+            print(f"⚠️ YouTube yêu cầu xác thực, dùng giá trị mặc định: {error_msg[:100]}")
+        else:
+            print(f"LỖI LẤY THÔNG TIN: {error_msg[:100]}")
         return None
 
 
@@ -207,8 +230,20 @@ def get_audio_url():
         return jsonify({"error": "Thiếu tham số 'url' hoặc 'q'"}), 400
 
     info = fetch_basic_info(youtube_url)
-    title = info.get('title', 'Audio Stream Link') if info else 'Audio Stream Link'
-    artist = info.get('uploader', '') if info else ''
+    # Nếu không lấy được info (bị block), dùng giá trị mặc định
+    if info:
+        title = info.get('title', 'Audio Stream Link') or 'Audio Stream Link'
+        artist = info.get('uploader', '') or ''
+    else:
+        # Extract video ID từ URL để làm title
+        import re
+        video_id_match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11}).*', youtube_url)
+        if video_id_match:
+            video_id = video_id_match.group(1)
+            title = f"YouTube Video {video_id}"
+        else:
+            title = 'Audio Stream Link'
+        artist = 'YouTube'
 
     token = uuid.uuid4().hex
     STREAM_TOKENS[token] = {
