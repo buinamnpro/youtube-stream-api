@@ -19,9 +19,12 @@ def search_youtube_and_get_url(query):
     if query:
         query = urllib.parse.unquote_plus(query)
     
+    # Format query để yt-dlp nhận diện là YouTube search
+    # Phải có prefix "ytsearch1:" để yt-dlp biết đây là YouTube search
+    search_query = f"ytsearch1:{query}"
+    
     # Cấu hình để tránh bot detection - dùng extract_flat để chỉ lấy URL
     ydl_opts = {
-        'default_search': 'ytsearch1',
         'quiet': False,
         'format': 'bestaudio',
         'skip_download': True,
@@ -57,14 +60,18 @@ def search_youtube_and_get_url(query):
     for attempt in range(max_retries):
         try:
             print(f"🔍 Đang tìm kiếm (lần {attempt + 1}/{max_retries}): '{query}'")
+            print(f"🔍 Query formatted: '{search_query}'")
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(query, download=False)
+                info = ydl.extract_info(search_query, download=False)
                 print(f"📊 Kết quả tìm kiếm: {info}")
                 
                 if info and 'entries' in info:
                     entries = [e for e in info['entries'] if e]  # Loại bỏ None entries
                     if len(entries) > 0:
                         entry = entries[0]
+                        # Debug: In ra cấu trúc entry để xem có gì
+                        print(f"📋 Entry keys: {list(entry.keys()) if entry else 'None'}")
+                        
                         # Với extract_flat=True, có thể chỉ có id, cần build URL
                         video_id = entry.get('id')
                         if video_id:
@@ -72,11 +79,20 @@ def search_youtube_and_get_url(query):
                             print(f"✅ Tìm thấy video ID: {video_id}")
                             print(f"✅ URL: {video_url}")
                             return video_url
+                        
                         # Hoặc có sẵn URL
                         video_url = entry.get('webpage_url') or entry.get('url')
                         if video_url:
-                            print(f"✅ Tìm thấy video: {video_url}")
+                            print(f"✅ Tìm thấy video URL: {video_url}")
+                            # Extract ID từ URL nếu cần
+                            import re
+                            id_match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11})', video_url)
+                            if id_match:
+                                print(f"✅ Video ID từ URL: {id_match.group(1)}")
                             return video_url
+                        
+                        # Nếu không có cả ID và URL
+                        print(f"⚠️ Entry không có 'id' hoặc 'url': {entry}")
                     else:
                         print("⚠️ Không có entries hợp lệ")
                 else:
