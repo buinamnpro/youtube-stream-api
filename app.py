@@ -28,7 +28,7 @@ def search_youtube_and_get_url(query):
         'quiet': False,
         'format': 'bestaudio',
         'skip_download': True,
-        'extract_flat': True,  # Chỉ lấy URL, không cần metadata (tránh bot detection)
+        'extract_flat': 'in_playlist',  # Chỉ extract flat cho playlist, không cho video (để có metadata)
         # Thêm headers để tránh bot detection
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -63,14 +63,21 @@ def search_youtube_and_get_url(query):
             print(f"🔍 Query formatted: '{search_query}'")
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(search_query, download=False)
-                print(f"📊 Kết quả tìm kiếm: {info}")
+                print(f"📊 Kết quả tìm kiếm type: {type(info)}")
+                print(f"📊 Kết quả có entries?: {'entries' in info if info else 'None'}")
                 
                 if info and 'entries' in info:
                     entries = [e for e in info['entries'] if e]  # Loại bỏ None entries
+                    print(f"📊 Số lượng entries: {len(entries)}")
                     if len(entries) > 0:
                         entry = entries[0]
                         # Debug: In ra cấu trúc entry để xem có gì
-                        print(f"📋 Entry keys: {list(entry.keys()) if entry else 'None'}")
+                        print(f"📋 Entry type: {type(entry)}")
+                        print(f"📋 Entry keys: {list(entry.keys()) if entry and isinstance(entry, dict) else 'Not a dict'}")
+                        if entry and isinstance(entry, dict):
+                            print(f"📋 Entry có 'id'?: {'id' in entry}")
+                            print(f"📋 Entry có 'url'?: {'url' in entry}")
+                            print(f"📋 Entry có 'webpage_url'?: {'webpage_url' in entry}")
                         
                         # Với extract_flat=True, có thể chỉ có id, cần build URL
                         video_id = entry.get('id')
@@ -181,6 +188,7 @@ def fetch_basic_info(youtube_url):
 
 
 def download_mp3_to_temp(youtube_url):
+    print(f"📥 Bắt đầu tải video: {youtube_url}")
     temp_dir = tempfile.mkdtemp(prefix="ytmp3_", dir=DOWNLOAD_DIR)
     outtmpl = os.path.join(temp_dir, '%(id)s.%(ext)s')
 
@@ -208,9 +216,10 @@ def download_mp3_to_temp(youtube_url):
         },
         'retries': 3,
         'fragment_retries': 3,
+        'ignoreerrors': True,  # Bỏ qua lỗi để tiếp tục
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'web'],
+                'player_client': ['android'],  # Chỉ dùng android, ít bị block
             }
         },
     }
@@ -221,17 +230,29 @@ def download_mp3_to_temp(youtube_url):
         download_opts['ffmpeg_location'] = ffmpeg_path
 
     try:
+        print(f"📥 Đang tải và chuyển đổi sang MP3...")
         with yt_dlp.YoutubeDL(download_opts) as ydl:
             ydl.download([youtube_url])
+        print(f"✅ Tải và chuyển đổi thành công!")
     except Exception as e:
-        print("LỖI TẢI/XUẤT MP3:", e)
+        error_msg = str(e)
+        print(f"❌ LỖI TẢI/XUẤT MP3: {error_msg}")
+        import traceback
+        print(traceback.format_exc())
         shutil.rmtree(temp_dir, ignore_errors=True)
         return None, None
 
+    # Tìm file MP3 đã tạo
+    print(f"🔍 Đang tìm file MP3 trong: {temp_dir}")
     for filename in os.listdir(temp_dir):
         if filename.endswith(".mp3"):
-            return os.path.join(temp_dir, filename), temp_dir
+            mp3_path = os.path.join(temp_dir, filename)
+            file_size = os.path.getsize(mp3_path)
+            print(f"✅ Tìm thấy file MP3: {filename} ({file_size} bytes)")
+            return mp3_path, temp_dir
 
+    print(f"⚠️ Không tìm thấy file MP3 trong {temp_dir}")
+    print(f"📋 Files trong thư mục: {os.listdir(temp_dir)}")
     shutil.rmtree(temp_dir, ignore_errors=True)
     return None, None
 
