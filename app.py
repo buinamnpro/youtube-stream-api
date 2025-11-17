@@ -78,6 +78,13 @@ def search_youtube_and_get_url(query):
                             video_url = f"https://www.youtube.com/watch?v={video_id}"
                             print(f"✅ Tìm thấy video ID: {video_id}")
                             print(f"✅ URL: {video_url}")
+                            # Lưu metadata từ entry nếu có (tránh phải lấy lại sau)
+                            if 'title' in entry or 'uploader' in entry:
+                                return {
+                                    'url': video_url,
+                                    'title': entry.get('title', ''),
+                                    'artist': entry.get('uploader', entry.get('channel', '')),
+                                }
                             return video_url
                         
                         # Hoặc có sẵn URL
@@ -89,6 +96,13 @@ def search_youtube_and_get_url(query):
                             id_match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11})', video_url)
                             if id_match:
                                 print(f"✅ Video ID từ URL: {id_match.group(1)}")
+                            # Lưu metadata từ entry nếu có
+                            if 'title' in entry or 'uploader' in entry:
+                                return {
+                                    'url': video_url,
+                                    'title': entry.get('title', ''),
+                                    'artist': entry.get('uploader', entry.get('channel', '')),
+                                }
                             return video_url
                         
                         # Nếu không có cả ID và URL
@@ -123,20 +137,22 @@ def search_youtube_and_get_url(query):
 
 def fetch_basic_info(youtube_url):
     # Thử lấy thông tin, nhưng nếu bị block thì dùng giá trị mặc định
+    # Dùng extract_flat để tránh bot detection khi lấy metadata
     info_opts = {
         'format': 'bestaudio/best',
         'noplaylist': True,
         'quiet': False,
         'skip_download': True,
         'ignoreerrors': True,  # Bỏ qua lỗi
+        'extract_flat': True,  # Chỉ lấy URL, không cần metadata (tránh bot detection)
         # Thêm headers để tránh bot detection
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'en-us,en;q=0.5',
         },
-        'retries': 2,  # Giảm retry để nhanh hơn
-        'fragment_retries': 2,
+        'retries': 1,  # Giảm retry để nhanh hơn
+        'fragment_retries': 1,
         'extractor_args': {
             'youtube': {
                 'player_client': ['android'],  # Chỉ dùng android
@@ -155,11 +171,12 @@ def fetch_basic_info(youtube_url):
                 return None
     except Exception as e:
         error_msg = str(e)
-        # Nếu là lỗi bot, không cần retry
+        # Nếu là lỗi bot, không cần retry - đây là điều bình thường
         if "bot" in error_msg.lower() or "login" in error_msg.lower():
-            print(f"⚠️ YouTube yêu cầu xác thực, dùng giá trị mặc định: {error_msg[:100]}")
+            print(f"⚠️ YouTube yêu cầu xác thực (bình thường), dùng giá trị mặc định")
+            print(f"   Chi tiết: {error_msg[:150]}")
         else:
-            print(f"LỖI LẤY THÔNG TIN: {error_msg[:100]}")
+            print(f"⚠️ LỖI LẤY THÔNG TIN: {error_msg[:150]}")
         return None
 
 
@@ -240,26 +257,37 @@ def get_audio_url():
                 "error": f"Không tìm thấy video cho từ khóa: {query}",
                 "suggestion": "Thử với từ khóa khác hoặc dùng URL YouTube trực tiếp"
             }), 404
-        print(f"✅ URL tìm được: {youtube_url}")
+        # Kiểm tra nếu search_youtube_and_get_url trả về dict (có metadata)
+        if isinstance(youtube_url, dict):
+            # Đã có metadata từ kết quả tìm kiếm
+            search_result = youtube_url
+            youtube_url = search_result['url']
+            title = search_result.get('title', '') or 'Audio Stream Link'
+            artist = search_result.get('artist', '') or 'YouTube'
+            print(f"✅ Đã có metadata từ tìm kiếm: {title} - {artist}")
+        else:
+            print(f"✅ URL tìm được: {youtube_url}")
 
     if not youtube_url:
         return jsonify({"error": "Thiếu tham số 'url' hoặc 'q'"}), 400
 
-    info = fetch_basic_info(youtube_url)
-    # Nếu không lấy được info (bị block), dùng giá trị mặc định
-    if info:
-        title = info.get('title', 'Audio Stream Link') or 'Audio Stream Link'
-        artist = info.get('uploader', '') or ''
-    else:
-        # Extract video ID từ URL để làm title
-        import re
-        video_id_match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11}).*', youtube_url)
-        if video_id_match:
-            video_id = video_id_match.group(1)
-            title = f"YouTube Video {video_id}"
+    # Chỉ lấy metadata nếu chưa có từ tìm kiếm
+    if 'title' not in locals() or not title or title == 'Audio Stream Link':
+        info = fetch_basic_info(youtube_url)
+        # Nếu không lấy được info (bị block), dùng giá trị mặc định
+        if info:
+            title = info.get('title', 'Audio Stream Link') or 'Audio Stream Link'
+            artist = info.get('uploader', '') or ''
         else:
-            title = 'Audio Stream Link'
-        artist = 'YouTube'
+            # Extract video ID từ URL để làm title
+            import re
+            video_id_match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11}).*', youtube_url)
+            if video_id_match:
+                video_id = video_id_match.group(1)
+                title = f"YouTube Video {video_id}"
+            else:
+                title = 'Audio Stream Link'
+            artist = 'YouTube'
 
     token = uuid.uuid4().hex
     STREAM_TOKENS[token] = {
