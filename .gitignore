@@ -27,6 +27,11 @@ Thumbs.db
 .env
 .env.local
 
+# Cookies (chứa thông tin đăng nhập - KHÔNG commit!)
+cookies.txt
+cookies.txt.txt
+*.cookies
+
 # Logs
 *.log
 

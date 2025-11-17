@@ -1,0 +1,16 @@
+# Netscape HTTP Cookie File
+# File này là ví dụ - KHÔNG dùng file này!
+# Bạn cần export cookies từ browser của mình
+
+# Cách tạo file cookies.txt:
+# 1. Cài extension "Get cookies.txt LOCALLY" trên Chrome/Edge
+# 2. Đăng nhập YouTube trên browser
+# 3. Vào YouTube → Click extension → Export
+# 4. Save thành cookies.txt trong thư mục này
+
+# Format:
+# .youtube.com	TRUE	/	TRUE	1735689600	__Secure-1PSID	COOKIE_VALUE
+# .youtube.com	TRUE	/	TRUE	1735689600	__Secure-1PSIDTS	COOKIE_VALUE
+
+# Xem COOKIES_GUIDE.md để biết chi tiết
+

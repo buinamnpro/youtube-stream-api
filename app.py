@@ -53,6 +53,14 @@ def search_youtube_and_get_url(query):
         },
     }
     
+    # Sử dụng cookies nếu có file cookies.txt
+    cookies_file = os.path.join(BASE_DIR, 'cookies.txt')
+    if os.path.exists(cookies_file):
+        ydl_opts['cookiefile'] = cookies_file
+        print(f"🍪 Sử dụng cookies từ: {cookies_file}")
+    else:
+        print(f"⚠️ Không tìm thấy cookies.txt cho tìm kiếm")
+    
     import time
     max_retries = 3
     retry_delay = 2
@@ -166,6 +174,11 @@ def fetch_basic_info(youtube_url):
             }
         },
     }
+    
+    # Sử dụng cookies nếu có file cookies.txt
+    cookies_file = os.path.join(BASE_DIR, 'cookies.txt')
+    if os.path.exists(cookies_file):
+        info_opts['cookiefile'] = cookies_file
 
     try:
         with yt_dlp.YoutubeDL(info_opts) as ydl:
@@ -223,6 +236,15 @@ def download_mp3_to_temp(youtube_url):
             }
         },
     }
+    
+    # Sử dụng cookies nếu có file cookies.txt
+    cookies_file = os.path.join(BASE_DIR, 'cookies.txt')
+    if os.path.exists(cookies_file):
+        download_opts['cookiefile'] = cookies_file
+        print(f"🍪 Sử dụng cookies từ: {cookies_file}")
+    else:
+        print(f"⚠️ Không tìm thấy cookies.txt, có thể bị block")
+        print(f"   Tạo file cookies.txt để tránh bot detection (xem COOKIES_GUIDE.md)")
     
     # Chỉ set ffmpeg_location nếu có biến môi trường (cho Windows local)
     ffmpeg_path = os.environ.get('FFMPEG_PATH')
@@ -368,31 +390,58 @@ def stream_audio():
 
 @app.route('/stream_mp3/<token>')
 def stream_mp3_token(token):
+    print(f"🎵 Nhận yêu cầu stream MP3 cho token: {token}")
     entry = STREAM_TOKENS.pop(token, None)
     if not entry:
-        return {"error": "Token không hợp lệ hoặc đã hết hạn"}, 404
+        print(f"❌ Token không hợp lệ hoặc đã hết hạn: {token}")
+        return jsonify({"error": "Token không hợp lệ hoặc đã hết hạn"}), 404
 
     youtube_url = entry["youtube_url"]
+    title = entry.get("title", "Unknown")
+    print(f"🎵 Stream video: {title}")
+    print(f"🎵 YouTube URL: {youtube_url}")
 
     def generate():
-        print(f"-> Bắt đầu chuyển đổi tạm MP3 cho token {token}")
-        mp3_path, temp_dir = download_mp3_to_temp(youtube_url)
-        if not mp3_path:
-            print("-> Không thể tạo MP3 tạm thời")
-            yield b""
-            return
         try:
+            print(f"🔄 Bắt đầu chuyển đổi MP3 cho token {token}")
+            mp3_path, temp_dir = download_mp3_to_temp(youtube_url)
+            if not mp3_path:
+                print(f"❌ Không thể tạo MP3 tạm thời cho token {token}")
+                yield b""
+                return
+            
+            print(f"✅ Đã tạo MP3, bắt đầu stream: {mp3_path}")
+            file_size = os.path.getsize(mp3_path)
+            print(f"📊 File size: {file_size} bytes")
+            
+            bytes_sent = 0
             with open(mp3_path, "rb") as f:
                 while True:
                     chunk = f.read(8192)
                     if not chunk:
                         break
+                    bytes_sent += len(chunk)
                     yield chunk
+                    # Log tiến độ mỗi 1MB
+                    if bytes_sent % (1024 * 1024) < 8192:
+                        print(f"📤 Đã gửi: {bytes_sent}/{file_size} bytes ({bytes_sent*100//file_size}%)")
+            
+            print(f"✅ Hoàn thành stream MP3: {bytes_sent} bytes")
+        except Exception as e:
+            print(f"❌ LỖI KHI STREAM MP3: {e}")
+            import traceback
+            print(traceback.format_exc())
+            yield b""
         finally:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            print(f"-> Đã dọn dẹp token {token}")
+            if 'temp_dir' in locals() and temp_dir:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                print(f"🧹 Đã dọn dẹp token {token}")
 
-    return Response(generate(), content_type="audio/mpeg")
+    response = Response(generate(), content_type="audio/mpeg")
+    # Thêm headers để hỗ trợ streaming
+    response.headers['Accept-Ranges'] = 'bytes'
+    response.headers['Cache-Control'] = 'no-cache'
+    return response
 
 
 # --- CHẠY SERVER ---
