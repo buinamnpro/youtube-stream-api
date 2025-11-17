@@ -16,6 +16,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 COPY downloads/ downloads/
 
+# Copy cookies.txt nếu có (optional - không bắt buộc)
+# Lưu ý: cookies.txt đã được .gitignore, nên chỉ copy được nếu file tồn tại
+# Nếu file không tồn tại, build sẽ bỏ qua (hoặc dùng environment variable YOUTUBE_COOKIES)
+# COPY cookies.txt .  # Uncomment nếu muốn copy file (không khuyến nghị vì bảo mật)
+
 # Tạo thư mục downloads nếu chưa có
 RUN mkdir -p downloads
 

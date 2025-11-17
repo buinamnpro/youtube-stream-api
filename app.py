@@ -53,13 +53,23 @@ def search_youtube_and_get_url(query):
         },
     }
     
-    # Sử dụng cookies nếu có file cookies.txt
+    # Sử dụng cookies từ file hoặc environment variable
     cookies_file = os.path.join(BASE_DIR, 'cookies.txt')
+    cookies_from_env = os.environ.get('YOUTUBE_COOKIES')
+    
     if os.path.exists(cookies_file):
         ydl_opts['cookiefile'] = cookies_file
-        print(f"🍪 Sử dụng cookies từ: {cookies_file}")
-    else:
-        print(f"⚠️ Không tìm thấy cookies.txt cho tìm kiếm")
+        print(f"🍪 Sử dụng cookies từ file cho tìm kiếm")
+    elif cookies_from_env:
+        # Tạo file cookies từ environment variable
+        temp_cookies_file = os.path.join(BASE_DIR, 'cookies_env.txt')
+        try:
+            with open(temp_cookies_file, 'w') as f:
+                f.write(cookies_from_env)
+            ydl_opts['cookiefile'] = temp_cookies_file
+            print(f"🍪 Sử dụng cookies từ env cho tìm kiếm")
+        except Exception as e:
+            print(f"⚠️ Không thể tạo cookies từ env: {e}")
     
     import time
     max_retries = 3
@@ -175,10 +185,20 @@ def fetch_basic_info(youtube_url):
         },
     }
     
-    # Sử dụng cookies nếu có file cookies.txt
+    # Sử dụng cookies từ file hoặc environment variable
     cookies_file = os.path.join(BASE_DIR, 'cookies.txt')
+    cookies_from_env = os.environ.get('YOUTUBE_COOKIES')
+    
     if os.path.exists(cookies_file):
         info_opts['cookiefile'] = cookies_file
+    elif cookies_from_env:
+        temp_cookies_file = os.path.join(BASE_DIR, 'cookies_env.txt')
+        try:
+            with open(temp_cookies_file, 'w') as f:
+                f.write(cookies_from_env)
+            info_opts['cookiefile'] = temp_cookies_file
+        except:
+            pass
 
     try:
         with yt_dlp.YoutubeDL(info_opts) as ydl:
@@ -237,14 +257,26 @@ def download_mp3_to_temp(youtube_url):
         },
     }
     
-    # Sử dụng cookies nếu có file cookies.txt
+    # Sử dụng cookies từ file hoặc environment variable
     cookies_file = os.path.join(BASE_DIR, 'cookies.txt')
+    cookies_from_env = os.environ.get('YOUTUBE_COOKIES')
+    
     if os.path.exists(cookies_file):
         download_opts['cookiefile'] = cookies_file
-        print(f"🍪 Sử dụng cookies từ: {cookies_file}")
+        print(f"🍪 Sử dụng cookies từ file: {cookies_file}")
+    elif cookies_from_env:
+        # Tạo file cookies từ environment variable
+        temp_cookies_file = os.path.join(BASE_DIR, 'cookies_env.txt')
+        try:
+            with open(temp_cookies_file, 'w') as f:
+                f.write(cookies_from_env)
+            download_opts['cookiefile'] = temp_cookies_file
+            print(f"🍪 Sử dụng cookies từ environment variable")
+        except Exception as e:
+            print(f"⚠️ Không thể tạo cookies từ env: {e}")
     else:
         print(f"⚠️ Không tìm thấy cookies.txt, có thể bị block")
-        print(f"   Tạo file cookies.txt để tránh bot detection (xem COOKIES_GUIDE.md)")
+        print(f"   Tạo file cookies.txt hoặc set YOUTUBE_COOKIES env (xem COOKIES_GUIDE.md)")
     
     # Chỉ set ffmpeg_location nếu có biến môi trường (cho Windows local)
     ffmpeg_path = os.environ.get('FFMPEG_PATH')
