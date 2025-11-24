@@ -1,18 +1,8 @@
-#!/usr/bin/env python3
-"""
-Bản 3 không-cookies:
-- KHÔNG sử dụng cookiefile
-- KHÔNG đọc YOUTUBE_COOKIES
-- Không ép player_client
-- Giữ hành vi yt-dlp mặc định để tránh bot-detection
-"""
-
 import os
-import time
 import uuid
 import tempfile
 import shutil
-import random
+
 import yt_dlp
 from flask import Flask, request, Response, jsonify, url_for
 
@@ -21,253 +11,210 @@ app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DOWNLOAD_DIR = os.path.join(BASE_DIR, "downloads")
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-
 STREAM_TOKENS = {}
 
-# Tạo rate limiter đơn giản tránh spam YouTube
-_RATE_LIMIT = {
-    "search": {"last": 0.0, "min_interval": 0.6},
-    "download": {"last": 0.0, "min_interval": 0.4},
-}
 
-def _maybe_rate_limit(kind):
-    info = _RATE_LIMIT.get(kind)
-    if not info:
-        return
-    now = time.time()
-    wait = info["min_interval"] - (now - info["last"])
-    if wait > 0:
-        time.sleep(wait + random.uniform(0, 0.1))
-    info["last"] = time.time()
-
-# ---------------------------------------------
-# SEARCH YOUTUBE (không cookies, không header hack)
-# ---------------------------------------------
-def search_youtube_and_get_url(query, retries=2):
-    if not query:
-        return None
-
-    _maybe_rate_limit("search")
-
-    search_query = f"ytsearch1:{query}"
+def search_soundcloud_url(query):
+    """Tìm kiếm SoundCloud và trả về URL track đầu tiên."""
+    search_prefix = "scsearch1:"
+    if not query.startswith(search_prefix):
+        query = search_prefix + query
 
     ydl_opts = {
-        "default_search": "ytsearch1",
+        "default_search": search_prefix,
         "quiet": True,
+        "format": "bestaudio",
         "skip_download": True,
-    }
-
-    attempt = 0
-    while attempt <= retries:
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(search_query, download=False)
-                if not info:
-                    return None
-
-                entries = info.get("entries") or []
-                entries = [e for e in entries if e]
-
-                if not entries:
-                    return None
-
-                entry = entries[0]
-
-                url = entry.get("webpage_url") or entry.get("url")
-                if not url and entry.get("id"):
-                    url = f"https://www.youtube.com/watch?v={entry['id']}"
-
-                if not url:
-                    return None
-
-                title = entry.get("title") or ""
-                artist = entry.get("uploader") or entry.get("channel") or ""
-
-                if title or artist:
-                    return {"url": url, "title": title, "artist": artist}
-
-                return url
-
-        except Exception:
-            attempt += 1
-            if attempt > retries:
-                return None
-            time.sleep(0.4 + random.uniform(0, 0.2))
-
-    return None
-
-# ---------------------------------------------
-# FETCH BASIC INFO
-# ---------------------------------------------
-def fetch_basic_info(url):
-    if not url:
-        return None
-
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "quiet": True,
-        "skip_download": True,
-        "noplaylist": True,
+        "user_agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/91.0.4472.124 Safari/537.36"
+        ),
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            return ydl.extract_info(url, download=False)
-    except Exception:
-        return None
+            info = ydl.extract_info(query, download=False)
+            entries = info.get("entries") if info else []
+            if entries:
+                return entries[0].get("webpage_url")
+    except Exception as exc:
+        print(f"LỖI TÌM KIẾM SOUNDCLOUD: {exc}")
+    return None
 
-# ---------------------------------------------
-# DOWNLOAD MP3 (Không cookies)
-# ---------------------------------------------
-def download_mp3_to_temp(url, retries=2):
-    if not url:
-        return None, None
 
-    _maybe_rate_limit("download")
+def fetch_basic_info(track_url):
+    """Lấy metadata cơ bản để trả về cho firmware."""
+    info_opts = {
+        "format": "bestaudio/best",
+        "noplaylist": True,
+        "quiet": True,
+        "skip_download": True,
+    }
+    try:
+        with yt_dlp.YoutubeDL(info_opts) as ydl:
+            return ydl.extract_info(track_url, download=False)
+    except Exception as exc:
+        print(f"LỖI LẤY THÔNG TIN TRACK: {exc}")
+    return None
 
-    temp_dir = tempfile.mkdtemp(prefix="ytmp3_", dir=DOWNLOAD_DIR)
+
+def download_and_convert_to_mp3(track_url):
+    """Tải audio và chuyển sang MP3 bằng FFmpeg."""
+    temp_dir = tempfile.mkdtemp(prefix="scmp3_", dir=DOWNLOAD_DIR)
     outtmpl = os.path.join(temp_dir, "%(id)s.%(ext)s")
 
     download_opts = {
         "format": "bestaudio/best",
-        "quiet": True,
         "noplaylist": True,
+        "quiet": True,
         "outtmpl": outtmpl,
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
             "preferredquality": "192",
+            "nopostoverwrites": False,
         }],
-        "postprocessor_args": ["-ar", "24000", "-ac", "2"],
+        "postprocessor_args": [
+            "-ar", "24000",
+            "-ac", "2",
+        ],
         "keepvideo": False,
+        "overwrites": True,
     }
 
-    attempt = 0
-    while attempt <= retries:
-        try:
-            with yt_dlp.YoutubeDL(download_opts) as ydl:
-                ydl.download([url])
+    print(f"-> Bắt đầu TẢI & CHUYỂN MP3: {track_url}")
+    try:
+        with yt_dlp.YoutubeDL(download_opts) as ydl:
+            ydl.download([track_url])
+    except Exception as exc:
+        print(f"LỖI TẢI/XUẤT MP3: {exc}")
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        return None, None
 
-            for fn in os.listdir(temp_dir):
-                if fn.endswith(".mp3"):
-                    return os.path.join(temp_dir, fn), temp_dir
-
-            attempt += 1
-        except Exception:
-            attempt += 1
-
-        time.sleep(0.4 + random.uniform(0, 0.3))
+    for filename in os.listdir(temp_dir):
+        if filename.endswith(".mp3"):
+            return os.path.join(temp_dir, filename), temp_dir
 
     shutil.rmtree(temp_dir, ignore_errors=True)
     return None, None
 
-# ---------------------------------------------
-# API GET URL
-# ---------------------------------------------
-@app.route("/get_audio_url")
+
+@app.route("/get_audio_url", methods=["GET"])
 def get_audio_url():
-    url = request.args.get("url")
+    track_url = request.args.get("url")
     query = request.args.get("q")
 
-    title = ""
-    artist = ""
-
     if query:
-        result = search_youtube_and_get_url(query)
-        if not result:
-            return jsonify({"error": "Không tìm thấy video", "query": query}), 404
+        print("Nhận yêu cầu tìm kiếm SoundCloud:", query)
+        track_url = search_soundcloud_url(query)
+        if not track_url:
+            return jsonify({
+                "error": f"Không tìm thấy track SoundCloud cho từ khóa: {query}"
+            }), 404
+        print("URL SoundCloud tìm được:", track_url)
 
-        if isinstance(result, dict):
-            url = result["url"]
-            title = result.get("title", "")
-            artist = result.get("artist", "")
-        else:
-            url = result
+    if not track_url:
+        return jsonify({"error": "Thiếu tham số 'url' hoặc 'q'"}), 400
 
-    if not url:
-        return jsonify({"error": "Thiếu url hoặc q"}), 400
-
-    if not title:
-        info = fetch_basic_info(url)
-        if info:
-            title = info.get("title", "")
-            artist = info.get("uploader", "")
+    info = fetch_basic_info(track_url)
+    title = info.get("title", "SoundCloud Stream") if info else "SoundCloud Stream"
+    artist = info.get("uploader", "") if info else ""
 
     token = uuid.uuid4().hex
-    STREAM_TOKENS[token] = {"youtube_url": url, "title": title, "artist": artist}
+    STREAM_TOKENS[token] = {
+        "track_url": track_url,
+        "title": title,
+        "artist": artist,
+    }
 
-    stream_url = request.host_url.rstrip("/") + url_for("stream_mp3_token", token=token)
+    audio_url = request.host_url.rstrip("/") + url_for("stream_mp3_token", token=token)
 
     return jsonify({
         "status": "success",
-        "title": title or "Audio Stream",
-        "audio_url": stream_url,
-        "artist": artist,
+        "title": title,
+        "audio_url": audio_url,
         "content_type": "audio/mpeg",
-        "lyric_url": ""
+        "artist": artist,
+        "lyric_url": "",
     })
 
-# ---------------------------------------------
-# STREAM API
-# ---------------------------------------------
-@app.route("/stream")
+
+@app.route("/stream", methods=["GET"])
 def stream_audio():
-    url = request.args.get("url")
+    track_url = request.args.get("url")
     query = request.args.get("q")
 
     if query:
-        result = search_youtube_and_get_url(query)
-        if isinstance(result, dict):
-            url = result["url"]
-        else:
-            url = result
+        print("Nhận yêu cầu tìm kiếm SoundCloud:", query)
+        track_url = search_soundcloud_url(query)
+        if not track_url:
+            return jsonify({
+                "error": f"Không tìm thấy track SoundCloud cho từ khóa: {query}"
+            }), 404
+        print("URL SoundCloud tìm được:", track_url)
 
-    if not url:
+    if not track_url:
         return jsonify({"error": "Thiếu url hoặc q"}), 400
 
-    def generate():
-        mp3_path, temp_dir = download_mp3_to_temp(url)
-        if not mp3_path:
-            yield b""
-            return
+    mp3_path, temp_dir = download_and_convert_to_mp3(track_url)
+    if not mp3_path:
+        return jsonify({"error": "Không thể tạo file MP3 (kiểm tra FFmpeg)."}), 500
 
+    def generate():
+        print(f"-> STREAM MP3 từ file: {mp3_path}")
         try:
             with open(mp3_path, "rb") as f:
-                while chunk := f.read(8192):
+                while True:
+                    chunk = f.read(8192)
+                    if not chunk:
+                        break
                     yield chunk
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+            print("-> Đã dọn dẹp file MP3 tạm.")
 
     return Response(generate(), content_type="audio/mpeg")
+
 
 @app.route("/stream_mp3/<token>")
 def stream_mp3_token(token):
     entry = STREAM_TOKENS.pop(token, None)
     if not entry:
-        return jsonify({"error": "Token hết hạn hoặc sai"}), 404
+        return jsonify({"error": "Token không hợp lệ hoặc đã hết hạn"}), 404
 
-    url = entry["youtube_url"]
+    track_url = entry["track_url"]
 
     def generate():
-        mp3_path, temp_dir = download_mp3_to_temp(url)
+        print(f"-> Bắt đầu convert MP3 cho token {token}")
+        mp3_path, temp_dir = download_and_convert_to_mp3(track_url)
         if not mp3_path:
+            print("-> Không thể tạo MP3 tạm thời cho token")
             yield b""
             return
-
         try:
             with open(mp3_path, "rb") as f:
-                while chunk := f.read(8192):
+                while True:
+                    chunk = f.read(8192)
+                    if not chunk:
+                        break
                     yield chunk
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+            print(f"-> Đã dọn dẹp token {token}")
 
     resp = Response(generate(), content_type="audio/mpeg")
     resp.headers["Accept-Ranges"] = "bytes"
     resp.headers["Cache-Control"] = "no-cache"
     return resp
 
-# ---------------------------------------------
-# RUN SERVER
-# ---------------------------------------------
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    HOST = os.environ.get("HOST", "0.0.0.0")
+    PORT = int(os.environ.get("PORT", 5000))
+
+    print("=====================================================")
+    print(" SERVER SOUNDCLOUD MP3 STREAM (CẦN FFmpeg) ĐÃ SẴN SÀNG ")
+    print("=====================================================")
+
+    app.run(host=HOST, port=PORT, debug=False)
