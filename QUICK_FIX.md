@@ -61,3 +61,4 @@ Nếu vẫn bị block khi tìm kiếm (không phải metadata):
 - Đợi 10-30 phút rồi thử lại
 - Hoặc dùng URL YouTube trực tiếp: `?url=https://www.youtube.com/watch?v=VIDEO_ID`
 
+

@@ -108,3 +108,4 @@ Sign in to confirm you're not a bot
 - YouTube thay đổi cách block liên tục
 - Code đã được tối ưu để tránh bot detection tốt nhất có thể
 
+
